@@ -42,13 +42,15 @@
         </div>
     </div>
 
-    <script type=\"module\">
-        import RFB from \"./novnc/core/rfb.js\";
+    <!-- *** CORRECTED SCRIPT TAG *** -->
+    <script type="module">
+        // Use standard quotes, not escaped ones (")
+        import RFB from "./novnc/core/rfb.js";
 
-        const form = document.getElementById(\"workflow-form\");
-        const statusDiv = document.getElementById(\"status\");
-        const downloadDiv = document.getElementById(\"download-link\");
-        const vncDiv = document.getElementById(\"vnc-viewer\");
+        const form = document.getElementById("workflow-form");
+        const statusDiv = document.getElementById("status");
+        const downloadDiv = document.getElementById("download-link");
+        const vncDiv = document.getElementById("vnc-viewer");
         let rfb; // Variable to hold the RFB connection instance
 
         function connectVNC(url) {
@@ -57,63 +59,63 @@
                 rfb.disconnect();
             }
 
-            vncDiv.innerHTML = \"Connecting to VNC...\"; // Clear previous content
+            vncDiv.innerHTML = "Connecting to VNC..."; // Clear previous content
 
             try {
                 // RFB options
                 const options = {
-                    wsProtocols: [\"binary\", \"base64\"]
+                    wsProtocols: ["binary", "base64"]
                     // Add credentials if needed, e.g.:
-                    // credentials: { password: \"your_vnc_password\" }
+                    // credentials: { password: "your_vnc_password" }
                 };
 
                 // Example URL format: ws://host:port
                 rfb = new RFB(vncDiv, url, options);
 
                 // Add event listeners
-                rfb.addEventListener(\"connect\", () => {
-                    statusDiv.textContent = \"Status: VNC Connected. Workflow running...\";
-                    vncDiv.style.backgroundColor = \"#fff\"; // Reset background on connect
+                rfb.addEventListener("connect", () => {
+                    statusDiv.textContent = "Status: VNC Connected. Workflow running...";
+                    vncDiv.style.backgroundColor = "#fff"; // Reset background on connect
                 });
 
-                rfb.addEventListener(\"disconnect\", (detail) => {
-                    statusDiv.textContent = \"Status: VNC Disconnected.\";
-                    vncDiv.innerHTML = \"VNC Disconnected. Reason: \" + (detail.detail.reason || \"Unknown\");
-                    vncDiv.style.backgroundColor = \"#f0f0f0\"; // Reset background
+                rfb.addEventListener("disconnect", (detail) => {
+                    statusDiv.textContent = "Status: VNC Disconnected.";
+                    vncDiv.innerHTML = "VNC Disconnected. Reason: " + (detail.detail.reason || "Unknown");
+                    vncDiv.style.backgroundColor = "#f0f0f0"; // Reset background
                     rfb = null;
                 });
                 
-                rfb.addEventListener(\"credentialsrequired\", () => {
-                    const password = prompt(\"Enter VNC Password:\");
+                rfb.addEventListener("credentialsrequired", () => {
+                    const password = prompt("Enter VNC Password:");
                     rfb.sendCredentials({ password: password });
                 });
 
             } catch (exc) {
-                statusDiv.textContent = \"Status: Error connecting VNC - \" + exc;
-                vncDiv.innerHTML = \"Failed to create VNC connection.\";
-                console.error(\"Unable to create RFB client\");
+                statusDiv.textContent = "Status: Error connecting VNC - " + exc;
+                vncDiv.innerHTML = "Failed to create VNC connection.";
+                console.error("Unable to create RFB client");
             }
         }
 
-        form.addEventListener(\"submit\", async (event) => {
-            event.preventDefault();
-            statusDiv.textContent = \"Status: Starting workflow...\";
-            downloadDiv.innerHTML = \"\"; // Clear previous download link
-            vncDiv.innerHTML = \"Initializing VNC connection...\"; // Update VNC placeholder
-            vncDiv.style.backgroundColor = \"#f0f0f0\";
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault(); // Prevent default GET submission
+            statusDiv.textContent = "Status: Starting workflow...";
+            downloadDiv.innerHTML = ""; // Clear previous download link
+            vncDiv.innerHTML = "Initializing VNC connection..."; // Update VNC placeholder
+            vncDiv.style.backgroundColor = "#f0f0f0";
             if (rfb) rfb.disconnect(); // Disconnect old session
 
             const formData = new FormData(form);
             const data = {
-                url: formData.get(\"url\"),
-                steps: formData.get(\"steps\").split(\"\\n\").filter(step => step.trim() !== \"\") // Split steps into an array
+                url: formData.get("url"),
+                steps: formData.get("steps").split("\n").filter(step => step.trim() !== "") // Split steps into an array
             };
 
             try {
-                const response = await fetch(\"/start_workflow\", {
-                    method: \"POST\",
+                const response = await fetch("/start_workflow", {
+                    method: "POST",
                     headers: {
-                        \"Content-Type\": \"application/json\",
+                        "Content-Type": "application/json",
                     },
                     body: JSON.stringify(data),
                 });
@@ -126,18 +128,18 @@
                         // Connect using the URL from the backend
                         connectVNC(result.vnc_url);
                     } else {
-                         vncDiv.innerHTML = \"VNC URL not provided by backend.\";
+                         vncDiv.innerHTML = "VNC URL not provided by backend.";
                     }
-                    // Download link logic will be handled by polling status later
                     // Start polling for status
                     pollStatus(result.workflow_id);
                 } else {
-                    statusDiv.textContent = `Status: Error - ${result.error || \"Unknown error\"}`;
-                    vncDiv.innerHTML = \"VNC Connection Failed (Backend Error).\";
+                    statusDiv.textContent = `Status: Error - ${result.error || "Unknown error"}`;
+                    vncDiv.innerHTML = "VNC Connection Failed (Backend Error).";
                 }
             } catch (error) {
                 statusDiv.textContent = `Status: Error - ${error.message}`;
-                vncDiv.innerHTML = \"VNC Connection Failed (Network Error).\";
+                vncDiv.innerHTML = "VNC Connection Failed (Network Error).";
+                console.error("Fetch error:", error); // Log fetch error
             }
         });
 
@@ -149,30 +151,40 @@
                     const result = await response.json();
 
                     if (response.ok) {
-                        statusDiv.textContent = `Status: ${result.status}`;
-                        if (result.status === \"completed\") {
+                        // Update status based on backend response
+                        let currentStatusText = `Status: ${result.status}`;
+                        if (result.status === "failed" && result.error) {
+                            currentStatusText += ` - Error: ${result.error}`;
+                        }
+                        statusDiv.textContent = currentStatusText;
+
+                        if (result.status === "completed") {
                             if (result.download_url) {
-                                downloadDiv.innerHTML = `<a href=\"${result.download_url}\" download>Download Recording</a>`;
+                                downloadDiv.innerHTML = `<a href="${result.download_url}" download>Download Recording</a>`;
                             }
                             clearInterval(intervalId); // Stop polling
                             if (rfb) rfb.disconnect(); // Disconnect VNC on completion
-                        } else if (result.status === \"failed\") {
-                             statusDiv.textContent = `Status: Workflow Failed`;
+                        } else if (result.status === "failed") {
                              clearInterval(intervalId);
                              if (rfb) rfb.disconnect();
                         }
-                        // Continue polling if status is \"running\" or similar
+                        // Continue polling if status is "running", "starting", etc.
                     } else {
-                        console.error(\"Status poll failed:\", result.error);
+                        console.error("Status poll failed:", result.error);
                         // Optionally stop polling on error or retry
+                        // statusDiv.textContent = `Status: Error polling - ${result.error || 'Unknown'}`;
                         // clearInterval(intervalId);
                     }
                 } catch (error) {
-                    console.error(\"Error polling status:\", error);
+                    console.error("Error polling status:", error);
                     // Optionally stop polling on error
+                    // statusDiv.textContent = `Status: Error polling - ${error.message}`;
                     // clearInterval(intervalId);
                 }
             }, 5000); // Poll every 5 seconds
         }
 
     </script>
+</body>
+</html>
+
