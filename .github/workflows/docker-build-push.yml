@@ -50,10 +50,12 @@ jobs:
           push: true
           # Replace with your desired image name and tag
           # Example for Docker Hub:
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/browser-use-controller:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/browser-use-controller:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/browser-use-controller:${{ github.sha }}
           # Example for GitHub Container Registry:
-          # tags: ghcr.io/${{ github.repository_owner }}/browser-use-controller:latest
-          # Add other tags like git sha if needed: tags: user/app:latest,user/app:${{ github.sha }}
+          # tags: |
+          #   ghcr.io/${{ github.repository_owner }}/browser-use-controller:latest
+          #   ghcr.io/${{ github.repository_owner }}/browser-use-controller:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
