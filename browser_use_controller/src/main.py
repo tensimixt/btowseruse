@@ -210,6 +210,4 @@ def send_novnc(path):
 if __name__ == "__main__":
     # Use a port suitable for deployment, e.g., 8080 or 8000
     app.run(host="0.0.0.0", port=8080, debug=False) # Disable debug for production/testing
-utes extensively
-    app.run(host=\"0.0.0.0\", port=5000, debug=True) # Use a different port than default Flask 5000 if needed
 
