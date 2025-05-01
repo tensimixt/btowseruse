@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Workflow Automation</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; }
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .left-panel { width: 30%; padding: 20px; border-right: 1px solid #ccc; display: flex; flex-direction: column; overflow-y: auto; }
+        .right-panel { flex: 1; padding: 20px; display: flex; flex-direction: column; }
+        #vnc-viewer { flex: 1; border: 1px solid #eee; background-color: #f0f0f0; display: flex; align-items: center; justify-content: center; text-align: center; color: #666; }
+        textarea { width: 95%; margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; }
+        button { padding: 10px 15px; cursor: pointer; }
+        #status { margin-top: 15px; font-style: italic; }
+        #download-link { margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-panel">
+            <h2>Workflow Input</h2>
+            <form id="workflow-form">
+                <label for="url">Target URL:</label>
+                <input type="url" id="url" name="url" required style="width: 95%; margin-bottom: 10px;">
+
+                <label for="steps">Workflow Steps (one per line):</label>
+                <textarea id="steps" name="steps" rows="10" required></textarea>
+
+                <button type="submit">Start Workflow</button>
+            </form>
+            <div id="status">Status: Idle</div>
+            <div id="download-link"></div>
+        </div>
+        <div class="right-panel">
+            <h2>Live Browser View (VNC)</h2>
+            <div id="vnc-viewer">
+                VNC Viewer will load here...
+                <!-- VNC client (e.g., noVNC) will be embedded here later -->
+            </div>
+        </div>
+    </div>
+
+    <script type=\"module\">
+        import RFB from \"./novnc/core/rfb.js\";
+
+        const form = document.getElementById(\"workflow-form\");
+        const statusDiv = document.getElementById(\"status\");
+        const downloadDiv = document.getElementById(\"download-link\");
+        const vncDiv = document.getElementById(\"vnc-viewer\");
+        let rfb; // Variable to hold the RFB connection instance
+
+        function connectVNC(url) {
+            // Disconnect previous connection if any
+            if (rfb) {
+                rfb.disconnect();
+            }
+
+            vncDiv.innerHTML = \"Connecting to VNC...\"; // Clear previous content
+
+            try {
+                // RFB options
+                const options = {
+                    wsProtocols: [\"binary\", \"base64\"]
+                    // Add credentials if needed, e.g.:
+                    // credentials: { password: \"your_vnc_password\" }
+                };
+
+                // Example URL format: ws://host:port
+                rfb = new RFB(vncDiv, url, options);
+
+                // Add event listeners
+                rfb.addEventListener(\"connect\", () => {
+                    statusDiv.textContent = \"Status: VNC Connected. Workflow running...\";
+                    vncDiv.style.backgroundColor = \"#fff\"; // Reset background on connect
+                });
+
+                rfb.addEventListener(\"disconnect\", (detail) => {
+                    statusDiv.textContent = \"Status: VNC Disconnected.\";
+                    vncDiv.innerHTML = \"VNC Disconnected. Reason: \" + (detail.detail.reason || \"Unknown\");
+                    vncDiv.style.backgroundColor = \"#f0f0f0\"; // Reset background
+                    rfb = null;
+                });
+                
+                rfb.addEventListener(\"credentialsrequired\", () => {
+                    const password = prompt(\"Enter VNC Password:\");
+                    rfb.sendCredentials({ password: password });
+                });
+
+            } catch (exc) {
+                statusDiv.textContent = \"Status: Error connecting VNC - \" + exc;
+                vncDiv.innerHTML = \"Failed to create VNC connection.\";
+                console.error(\"Unable to create RFB client\");
+            }
+        }
+
+        form.addEventListener(\"submit\", async (event) => {
+            event.preventDefault();
+            statusDiv.textContent = \"Status: Starting workflow...\";
+            downloadDiv.innerHTML = \"\"; // Clear previous download link
+            vncDiv.innerHTML = \"Initializing VNC connection...\"; // Update VNC placeholder
+            vncDiv.style.backgroundColor = \"#f0f0f0\";
+            if (rfb) rfb.disconnect(); // Disconnect old session
+
+            const formData = new FormData(form);
+            const data = {
+                url: formData.get(\"url\"),
+                steps: formData.get(\"steps\").split(\"\\n\").filter(step => step.trim() !== \"\") // Split steps into an array
+            };
+
+            try {
+                const response = await fetch(\"/start_workflow\", {
+                    method: \"POST\",
+                    headers: {
+                        \"Content-Type\": \"application/json\",
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    statusDiv.textContent = `Status: ${result.message}`;
+                    if (result.vnc_url) {
+                        // Connect using the URL from the backend
+                        connectVNC(result.vnc_url);
+                    } else {
+                         vncDiv.innerHTML = \"VNC URL not provided by backend.\";
+                    }
+                    // Download link logic will be handled by polling status later
+                    // Start polling for status
+                    pollStatus(result.workflow_id);
+                } else {
+                    statusDiv.textContent = `Status: Error - ${result.error || \"Unknown error\"}`;
+                    vncDiv.innerHTML = \"VNC Connection Failed (Backend Error).\";
+                }
+            } catch (error) {
+                statusDiv.textContent = `Status: Error - ${error.message}`;
+                vncDiv.innerHTML = \"VNC Connection Failed (Network Error).\";
+            }
+        });
+
+        // Function to poll workflow status
+        async function pollStatus(workflowId) {
+            const intervalId = setInterval(async () => {
+                try {
+                    const response = await fetch(`/workflow_status/${workflowId}`);
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        statusDiv.textContent = `Status: ${result.status}`;
+                        if (result.status === \"completed\") {
+                            if (result.download_url) {
+                                downloadDiv.innerHTML = `<a href=\"${result.download_url}\" download>Download Recording</a>`;
+                            }
+                            clearInterval(intervalId); // Stop polling
+                            if (rfb) rfb.disconnect(); // Disconnect VNC on completion
+                        } else if (result.status === \"failed\") {
+                             statusDiv.textContent = `Status: Workflow Failed`;
+                             clearInterval(intervalId);
+                             if (rfb) rfb.disconnect();
+                        }
+                        // Continue polling if status is \"running\" or similar
+                    } else {
+                        console.error(\"Status poll failed:\", result.error);
+                        // Optionally stop polling on error or retry
+                        // clearInterval(intervalId);
+                    }
+                } catch (error) {
+                    console.error(\"Error polling status:\", error);
+                    // Optionally stop polling on error
+                    // clearInterval(intervalId);
+                }
+            }, 5000); // Poll every 5 seconds
+        }
+
+    </script>

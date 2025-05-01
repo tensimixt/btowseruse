@@ -1,0 +1,101 @@
+version: "2.0"
+
+services:
+  controller:
+    # IMPORTANT: Replace with your actual image built from the Dockerfile and pushed to a registry
+    # Example: image: yourdockerhub/browser-use-controller:latest
+    image: placeholder/browser-use-controller:latest 
+    env:
+      # Points to the internal CDP port of the browser service within Akash network
+      - BROWSER_CDP_ENDPOINT=ws://browser:9222 
+      # Hostname for the browser service within Akash network (used by backend)
+      - VNC_HOST=browser 
+      # Port for the websockify proxy in the browser service (used by backend to construct URL for frontend)
+      - VNC_PORT=6900 
+      # RECORDINGS_DIR is set in the Dockerfile, can be overridden if needed
+      # - RECORDINGS_DIR=/app/recordings 
+    expose:
+      # Expose the Flask app (port 8080) globally on port 80 (HTTP)
+      - port: 8080 
+        as: 80
+        to:
+          - global: true
+    depends_on:
+      - browser
+
+  browser:
+    # Selenium image with Chrome, VNC (on 5900), and websockify (on 6900)
+    image: selenium/standalone-chrome-debug:latest 
+    env:
+      # Disable Selenium's default session timeout if necessary (e.g., for long workflows)
+      - SE_NODE_SESSION_TIMEOUT=3600 
+      # Increase shared memory for Chrome stability
+      - SHM_SIZE=2g
+      # Add VNC password environment variable if you want to set one
+      # - VNC_PASSWORD=yourpassword
+    expose:
+      # Expose CDP port 9222 internally ONLY to the controller service
+      - port: 9222
+        proto: tcp
+        to:
+          - service: controller
+      # Expose websockify port 6900 globally for noVNC connection from user's browser
+      - port: 6900 
+        as: 6900 # Keep the same port externally
+        to:
+          - global: true 
+
+profiles:
+  compute:
+    controller:
+      resources:
+        cpu:
+          units: 1.0
+        memory:
+          size: 2Gi
+        storage:
+          # Define persistent storage for recordings
+          - name: recordings-storage 
+            size: 10Gi # Adjust size as needed
+            attributes:
+              persistent: true
+              class: default # Or choose a specific storage class if available/needed
+    browser:
+      resources:
+        cpu:
+          units: 1.0 # May need more depending on browser workload
+        memory:
+          # Selenium images can be memory intensive
+          size: 3Gi 
+        storage:
+          # Ephemeral storage for browser cache etc.
+          - size: 2Gi 
+
+  placement:
+    # Define placement strategy, e.g., specific provider attributes or pricing
+    akash: # Generic name, can be customized
+      # attributes:
+        # Optional: Add provider attributes if needed
+        # host: akash
+      pricing:
+        controller:
+          denom: uakt
+          amount: 10000 # Adjust pricing as needed
+        browser:
+          denom: uakt
+          amount: 10000 # Adjust pricing as needed
+
+deployment:
+  controller:
+    akash:
+      profile: controller
+      count: 1
+      # Mount the persistent storage to the path defined in the Dockerfile/app
+      mounts:
+        /app/recordings: # Mount point inside the container (matches RECORDINGS_DIR)
+          storage: recordings-storage # Reference the storage defined in profiles
+  browser:
+    akash:
+      profile: browser
+      count: 1
+
