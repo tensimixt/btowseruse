@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the container
 COPY ./src ./src
-COPY ./venv ./venv # Copy venv just in case, though dependencies are installed globally
+# COPY ./venv ./venv # Copy venv just in case, though dependencies are installed globally
 
 # Create recordings directory and set permissions if needed
 RUN mkdir /app/recordings && chown -R nobody:nogroup /app/recordings
